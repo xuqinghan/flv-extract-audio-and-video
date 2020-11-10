@@ -36,10 +36,37 @@ def bytes_to_int(bytes_string):
     '''
     return int.from_bytes(bytes_string, byteorder="big")
 
+
+
+def parse_FLV_TAG1(f_tag):
+    PreviousTagSize, *_ = struct.unpack('>I', f_tag.read(4))
+    #print('PreviousTagSize0', PreviousTagSize)
+    #print('----------------flv_tag begin----------------')
+    #总是0
+    header = pares_FLVTAGHeader(BytesIO(f_tag.read(11)))
+    #print(header)
+    #XXXTag
+    DATA = f_tag.read(header['DataSize'])
+    #print('DATA', DATA)
+    #print('-----DATA-----------')
+    f_data = BytesIO(DATA)
+    if header['TagType'] == 'video':
+        body = parse_DATA_of_VIDEOTAG(f_data)
+    elif header['TagType'] == 'audio':
+        #print('DATA', DATA.hex())
+        body = parse_DATA_of_AUDIOTAG(f_data)
+    else:
+        raise Exception(f"unknown TagType {header['TagType']}")
+    #res = f_tag.read()
+    #assert len(res) == 0
+    #print('----------------flv_tag end----------------')
+    return {'header': header, 'body': body}
+
+
 class Parse:
 
-    def __init__(self, stream):
-        self._flv_data = stream
+    def __init__(self, flv_stream):
+        self.flv_stream = flv_stream
         self._bytes_begin = 13 # 3 + 1 + 1 + 4 + 4
         self._audio_tag_header = None
 
@@ -80,7 +107,7 @@ class Parse:
         seperate the audio from the vedio.
         '''
         #current = self._bytes_begin
-        while self._flv_data:
+        while self.flv_stream:
 
             tag_type = self._flv_data[current]         
             tag_data_size = bytes_to_int(self._flv_data[current+1:current+4])
