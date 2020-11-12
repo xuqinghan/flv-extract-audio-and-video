@@ -4,7 +4,8 @@
 同时出音频，视频帧，并回调而不是直接保存
 '''
 import struct
-#from io import BytesIO
+from io import BytesIO
+from pydub import AudioSegment
 #from bitarray import bitarray
 #from flv_decoder import pares_FLVTAGHeader
 from enum import Enum
@@ -268,17 +269,34 @@ if __name__ == '__main__':
             adts_headers = make_adts_headers(datasize_tag-2, audio_object_type, sampling_frequency_index)
             print(adts_headers)
             #重组aac一帧 加入了adts
-
+            print('size', datasize_tag)
             data_aac = adts_headers + data_tag[2:]
             #解码？
-            packets = codec_audio.parse(data_aac)
-            print(packets)
-            for packet in packets: 
-                frames = codec_audio.decode(packet)
-                print(frames)
+            audioData = BytesIO(data_aac)
+            sound = AudioSegment.from_file(audioData, format="aac")
+
+            # packets = codec_audio.parse(data_aac)
+            # print(packets)
+            # for packet in packets: 
+            #     frames = codec_audio.decode(packet)
+            #     print(frames)
             #play_obj = sa.play_buffer(data_tag[2:], 2, 2, 44100)
             #play_obj.wait_done()
-            #break
+            break
+            
+
+
+        elif tag_type == TagType.VIDEO:
+            # and tag1['body']['AVCPacketType'] == 'NALU':
+            #print(data)
+            # packets = codec_video.parse(data)
+            # #print('video', tag1['body'])
+            # imgs = []
+            # for packet in packets: 
+            #     frames = codec.decode(packet)
+            #     #frames = codec.decode(packet)
+            #     print('video frames', frames)
+            pass
         else:
             #暂时只读音频
             continue
