@@ -4,12 +4,22 @@
 同时出音频，视频帧，并回调而不是直接保存
 '''
 import struct
+#from io import BytesIO
+#from bitarray import bitarray
+#from flv_decoder import pares_FLVTAGHeader
+from enum import Enum
 
-AUDIO = 0x8
-VIDEO = 0x9
-SCRIPT = 0x12
+import av
+import simpleaudio as sa
 
-class audio_tag_header:
+codec_audio = av.CodecContext.create('aac', 'r')
+
+class TagType(Enum):
+    AUDIO = 0x8
+    VIDEO = 0x9
+    SCRIPT = 0x12
+
+class TagHeaderAudio:
     '''
     define the audio tag header structure
     '''
@@ -18,6 +28,9 @@ class audio_tag_header:
         self.soundrate = int(header_bits[4:6], 2)
         self.soundsize = int(header_bits[6], 2)
         self.soundtype = int(header_bits[7], 2)
+    
+    def __str__(self):
+        return f'soundformat: {self.soundformat}, soundrate: {self.soundrate}, soundsize:{self.soundsize}, soundtype:{self.soundtype}'
 
 class video_tag_header:
     '''
@@ -60,36 +73,81 @@ def parse_flvfile_header(f_stream):
             'has_audio': has_audio, 
             'len_header': len_header} #len_header 9 字节
 
-def parse_FLV_TAG1(f_tag):
-    PreviousTagSize, *_ = struct.unpack('>I', f_tag.read(4))
-    #print('PreviousTagSize0', PreviousTagSize)
-    #print('----------------flv_tag begin----------------')
-    #总是0
-    header = pares_FLVTAGHeader(BytesIO(f_tag.read(11)))
-    #print(header)
-    #XXXTag
-    DATA = f_tag.read(header['DataSize'])
-    #print('DATA', DATA)
-    #print('-----DATA-----------')
-    f_data = BytesIO(DATA)
-    if header['TagType'] == 'video':
-        body = parse_DATA_of_VIDEOTAG(f_data)
-    elif header['TagType'] == 'audio':
-        #print('DATA', DATA.hex())
-        body = parse_DATA_of_AUDIOTAG(f_data)
-    else:
-        raise Exception(f"unknown TagType {header['TagType']}")
-    #res = f_tag.read()
-    #assert len(res) == 0
-    #print('----------------flv_tag end----------------')
-    return {'header': header, 'body': body}
+def parseTAGheader(data_bytes):
+    '''TAG header 11字节'''
+
+    #print(data_bytes[0])
+    tag_type = TagType(data_bytes[0])
+    #print(tag_type)
+    #24bit
+    size_DATA = bytes_to_int(data_bytes[1:4])
+    #print('size_DATA', size_DATA)
+    timestamp = bytes_to_int(data_bytes[4:8])
+    #print('timestamp', timestamp)
+    StreamID = bytes_to_int(data_bytes[8:])
+    return {'TagType': tag_type,
+     'DataSize': size_DATA, 
+     'timestamp':timestamp, 
+     'StreamID':StreamID}
+     
+# def parse_FLV_TAG1(f_tag):
+#     PreviousTagSize, *_ = struct.unpack('>I', f_tag.read(4))
+#     #print('PreviousTagSize0', PreviousTagSize)
+#     #print('----------------flv_tag begin----------------')
+#     #总是0
+#     header = pares_FLVTAGHeader(BytesIO(f_tag.read(11)))
+#     #print(header)
+#     #XXXTag
+#     DATA = f_tag.read(header['DataSize'])
+#     #print('DATA', DATA)
+#     #print('-----DATA-----------')
+#     f_data = BytesIO(DATA)
+#     if header['TagType'] == 'video':
+#         body = parse_DATA_of_VIDEOTAG(f_data)
+#     elif header['TagType'] == 'audio':
+#         #print('DATA', DATA.hex())
+#         body = parse_DATA_of_AUDIOTAG(f_data)
+#     else:
+#         raise Exception(f"unknown TagType {header['TagType']}")
+#     #res = f_tag.read()
+#     #assert len(res) == 0
+#     #print('----------------flv_tag end----------------')
+#     return {'header': header, 'body': body}
+
+def calculate_sampling_frequency_index(data_tag):
+    '''
+    '''
+    bytes_string = data_tag[2:]
+    left = bytes_string[0]
+    right = bytes_string[1]
+    sampling_frequency_index = ((left & 0x7) << 1) | (right >> 7)
+    return sampling_frequency_index
+
+def calculate_audio_object_type(data_tag):
+    bytes_string = data_tag[2:]
+    left = bytes_string[0]
+    audio_object_type = (left & 0xF8) >> 3
+    return  audio_object_type
+
+def make_adts_headers(tag_data_size, audio_object_type, sampling_frequency_index):
+    '''
+    according to the doc, add adts headers
+    '''
+    # adts_fixed_header
+    bit_headers = format(0xFFF, 'b') + "0" + "00" + "1" + \
+    format(audio_object_type-1, "02b") + format(sampling_frequency_index, "04b") + \
+    "0" + format(2, "03b") + "0" + "0"
+    #adts_variable_header
+    bit_headers += "0" + "0" + format(7+tag_data_size, "013b") + format(0x7FF, "011b") + "00"
+    int_list = [int(bit_headers[8*x:8*x+8], 2) for x in range(7)]
+    return bytes(int_list)
 
 
 class Parse:
 
     def __init__(self, flv_stream):
         self.flv_stream = flv_stream
-        self._bytes_begin = 13 # 3 + 1 + 1 + 4 + 4
+        #self._bytes_begin = 13 # 3 + 1 + 1 + 4 + 4
         self._audio_tag_header = None
 
 
@@ -128,7 +186,7 @@ class Parse:
             tag_data = self._flv_data[current+11:current+11+tag_data_size]
             if tag_type == AUDIO:
                 if self._audio_tag_header is None:
-                    self._audio_tag_header = audio_tag_header(format(tag_data[0], 'b'))
+                    self._audio_tag_header = TagHeaderAudio(format(tag_data[0], 'b'))
                     assert(self._audio_tag_header.soundformat == 10)
                     assert(tag_data[1] == 0x00)
                     self.calculate_audio_specific_config(tag_data[2:])
@@ -165,16 +223,70 @@ def test_read_flvfile_header_without_struct():
 
 
 
+
 if __name__ == '__main__':
     fname = './xb2_kos.flv'
     f_stream = open(fname, 'rb')
+    parse = Parse(f_stream)
+    #------------flv header-----------------
     #test_read_flvfile_header()
     flvfile_header = parse_flvfile_header(f_stream)
     print(flvfile_header)
 
+    #--------------flv body-------------------
+    audio_tag_header = None
+
+    i = 0
+    while i < 100:
+        i += 1
+        print(i)
+        data_bytes = f_stream.read(4)
+        PreviousTagSize = bytes_to_int(data_bytes)
+        #print('PreviousTagSize', PreviousTagSize)
+        #------------HEAD-------------
+        #print('----------------flv_tag begin----------------')
+        data_bytes = f_stream.read(11)
+        header = parseTAGheader(data_bytes)
+        #header = pares_FLVTAGHeader(f_stream)
+        #print(header)
+        #print(header['TagType'] ==TagType.SCRIPT)
+        #-------------DATA--------------------
+        datasize_tag = header['DataSize']
+        data_tag = f_stream.read(datasize_tag)
+        tag_type = header['TagType']
+        if tag_type == TagType.AUDIO:
+            #print(audio_tag_header)
+            if audio_tag_header is None:
+                audio_tag_header = TagHeaderAudio(format(data_tag[0], 'b'))
+                #print(audio_tag_header)
+                sampling_frequency_index = calculate_sampling_frequency_index(data_tag)
+                audio_object_type = calculate_audio_object_type(data_tag)
+                print('sampling_frequency_index', sampling_frequency_index)
+                print('audio_object_type', audio_object_type)
 
 
-    #PreviousTagSize = bytes_to_int(data_bytes)
-    #print('PreviousTagSize', PreviousTagSize)
+            adts_headers = make_adts_headers(datasize_tag-2, audio_object_type, sampling_frequency_index)
+            print(adts_headers)
+            #重组aac一帧 加入了adts
 
+            data_aac = adts_headers + data_tag[2:]
+            #解码？
+            packets = codec_audio.parse(data_aac)
+            print(packets)
+            for packet in packets: 
+                frames = codec_audio.decode(packet)
+                print(frames)
+            #play_obj = sa.play_buffer(data_tag[2:], 2, 2, 44100)
+            #play_obj.wait_done()
+            #break
+        else:
+            #暂时只读音频
+            continue
+    #print(0x12== 18)
+    
+    #18 0x12 脚本
+
+
+    #如果32位读取，移位
+ 
     f_stream.close()
