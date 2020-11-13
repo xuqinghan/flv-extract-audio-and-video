@@ -9,10 +9,11 @@ from io import BytesIO
 #from bitarray import bitarray
 #from flv_decoder import pares_FLVTAGHeader
 from enum import Enum
-
+import cv2
+import numpy as np
 import av
 codec_audio = av.CodecContext.create('aac', 'r')
-codec_video = av.CodecContext.create('h264', 'r')
+
 
 import simpleaudio as sa
 
@@ -287,14 +288,20 @@ def test_read_flvfile_header_without_struct():
 # def dump_tagdata
 
 if __name__ == '__main__':
+    codec_video = av.CodecContext.create('h264', 'r')
+    #通过codec_name = container.streams[video_stream_index].codec_context
+    with open('./dumps/h264_extradata.dump', 'rb') as f:
+        extradata = f.read()
+    codec_video.extradata = extradata
 
-    fname_out_acc = './out.aac'
+
+    fname_out_acc = './dumps/out.aac'
     f_out_acc = open(fname_out_acc, 'wb')
 
     def fn_acc_frame(frame):
         f_out_acc.write(frame)
 
-    fname_out_h264 = './out.h264'
+    fname_out_h264 = './dumps/out.h264'
     f_out_h264 = open(fname_out_h264, 'wb')
 
     def fn_h264_frame(frame):
@@ -315,7 +322,7 @@ if __name__ == '__main__':
     audio_tag_header = None
     video_tag_header = None
     i = 0
-    while i < 10:
+    while i < 200:
         i += 1
         print(i)
         data_bytes = f_stream.read(4)
@@ -347,7 +354,7 @@ if __name__ == '__main__':
                 adts_headers = make_adts_headers(size_data_tag-2, audio_object_type, sampling_frequency_index)
                 print('adts_headers', adts_headers)
                 #重组aac一帧 加入了adts
-                print('size', size_data_tag)
+                #print('size', size_data_tag)
                 frame_acc = adts_headers + data_tag[2:]
                 #print(adts_headers, data_tag[2:])
                 #写入
@@ -386,6 +393,16 @@ if __name__ == '__main__':
                     print(packet)
                     frames = codec_video.decode(packet)
                     print(frames)
+                    for frame in frames:
+                        #PIL格式
+                        img = frame.to_image()
+                        #opencv格式
+                        img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
+                        print(img)
+                        cv2.imshow("h264", img)
+                        k = cv2.waitKey(1)
+                        if k == 27: # ESC
+                            break
 
             # if data_tag[0] == 0x17 and data_tag[1] == 0x00: 
             #     #header
