@@ -288,11 +288,12 @@ def test_read_flvfile_header_without_struct():
 # def dump_tagdata
 
 if __name__ == '__main__':
+
     codec_video = av.CodecContext.create('h264', 'r')
     #通过codec_name = container.streams[video_stream_index].codec_context
-    with open('./dumps/h264_extradata.dump', 'rb') as f:
-        extradata = f.read()
-    codec_video.extradata = extradata
+    # with open('./dumps/h264_extradata.dump', 'rb') as f:
+    #     extradata = f.read()
+    # codec_video.extradata = extradata
 
 
     fname_out_acc = './dumps/out.aac'
@@ -322,7 +323,7 @@ if __name__ == '__main__':
     audio_tag_header = None
     video_tag_header = None
     i = 0
-    while i < 200:
+    while i < 1500:
         i += 1
         print(i)
         data_bytes = f_stream.read(4)
@@ -381,24 +382,31 @@ if __name__ == '__main__':
                 continue
 
             #print(f'size_data_tag {size_data_tag} ', avc1)
-            if avc1['AVCPacketType'] == AVCPacketType.NALU:
+            if avc1['AVCPacketType'] == AVCPacketType.header:
+                #print('avc header')
+                codec_video.extradata = avc1['data']
+                # header 的 avc1['data'] 就是 extradata 
+                # #写header的数据
+                # with open('./dumps/avc_header.dump', 'wb') as f:
+                #     extradata = f.write(avc1['data'])
+            elif avc1['AVCPacketType'] == AVCPacketType.NALU:
                 NALUs = parse_NALUs_from_avc_data(avc1['data'])
-                print(f'{i}NALUs', len(NALUs), NALUs)
+                #print(f'{i}NALUs', len(NALUs), NALUs)
                 if i == 4:
                     #第一个NALU里有 BiliBili H264 Encoder v1.0 舍弃
                     NALUs = NALUs[1:]
 
                 for nalu in NALUs:
                     packet = av.packet.Packet(b"\x00\x00\x00\x01" + nalu)
-                    print(packet)
+                    #print(packet)
                     frames = codec_video.decode(packet)
-                    print(frames)
+                    #print(frames)
                     for frame in frames:
                         #PIL格式
                         img = frame.to_image()
                         #opencv格式
                         img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
-                        print(img)
+                        #print(img)
                         cv2.imshow("h264", img)
                         k = cv2.waitKey(1)
                         if k == 27: # ESC
