@@ -383,12 +383,17 @@ if __name__ == '__main__':
 
             #print(f'size_data_tag {size_data_tag} ', avc1)
             if avc1['AVCPacketType'] == AVCPacketType.header:
+                video_tag_header = TagHeaderVideo(data_tag)
+                data_write = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data
                 #print('avc header')
                 codec_video.extradata = avc1['data']
                 # header 的 avc1['data'] 就是 extradata 
                 # #写header的数据
                 # with open('./dumps/avc_header.dump', 'wb') as f:
                 #     extradata = f.write(avc1['data'])
+                with open('./dumps/avc_header_for_saveh264.dump', 'wb') as f:
+                    extradata = f.write(data_write)
+                fn_h264_frame(data_write)
             elif avc1['AVCPacketType'] == AVCPacketType.NALU:
                 NALUs = parse_NALUs_from_avc_data(avc1['data'])
                 #print(f'{i}NALUs', len(NALUs), NALUs)
@@ -397,7 +402,9 @@ if __name__ == '__main__':
                     NALUs = NALUs[1:]
 
                 for nalu in NALUs:
-                    packet = av.packet.Packet(b"\x00\x00\x00\x01" + nalu)
+                    data_write = b"\x00\x00\x00\x01" + nalu
+                    fn_h264_frame(data_write)
+                    packet = av.packet.Packet(data_write)
                     #print(packet)
                     frames = codec_video.decode(packet)
                     #print(frames)
