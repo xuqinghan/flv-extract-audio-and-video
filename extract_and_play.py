@@ -5,20 +5,37 @@
 '''
 import struct
 from io import BytesIO
-from pydub import AudioSegment
+#from pydub import AudioSegment
 #from bitarray import bitarray
 #from flv_decoder import pares_FLVTAGHeader
 from enum import Enum
 
 import av
+codec_audio = av.CodecContext.create('aac', 'r')
+codec_video = av.CodecContext.create('h264', 'r')
+
 import simpleaudio as sa
 
-codec_audio = av.CodecContext.create('aac', 'r')
+
 
 class TagType(Enum):
     AUDIO = 0x8
     VIDEO = 0x9
     SCRIPT = 0x12
+
+class CodecIDVideo(Enum):
+    AVC = 7
+
+class AVCPacketType(Enum):
+    header = 0
+    NALU = 1
+    end = 2
+
+class H264FrameType(Enum):
+    key = 1
+    inter = 2
+
+
 
 class TagHeaderAudio:
     '''
@@ -33,7 +50,7 @@ class TagHeaderAudio:
     def __str__(self):
         return f'soundformat: {self.soundformat}, soundrate: {self.soundrate}, soundsize:{self.soundsize}, soundtype:{self.soundtype}'
 
-class video_tag_header:
+class TagHeaderVideo:
     '''
     defiune the video tag header structure
     '''
@@ -91,6 +108,44 @@ def parseTAGheader(data_bytes):
      'timestamp':timestamp, 
      'StreamID':StreamID}
      
+def parse_avc_from_tag_video(data_bytes):
+    #4bit
+    FrameType_CodecID = data_tag[0]
+    CodecID = CodecIDVideo(data_tag[0] & 0x0F)
+    FrameType = data_tag[0] >> 4
+    print(f'CodecID, {CodecID} FrameType {FrameType}')
+    if CodecIDVideo.AVC != CodecID:
+        return None
+
+    #只处理AVC
+    type_AVCPacket = AVCPacketType(data_tag[1])
+    CompoistionTime = data_tag[3]
+
+
+    #begin_DATA = 5
+    return  {'AVCPacketType': type_AVCPacket, 
+            'keyframe': H264FrameType(FrameType), 
+            'CompoistionTime' : CompoistionTime,
+            'data':  data_bytes[5:]} #包括NALU数据长度
+ 
+def parse_NALUs_from_avc_data(data_avc):
+    '''用于字节流形式的NALU  
+        不加 b"\x00\x00\x00\x01"
+    '''
+    NALUs = []
+    begin = 0
+    size_bytes = len(data_avc)
+    while begin < size_bytes:
+        #4byte NALU长度
+        nalu_length = bytes_to_int(data_avc[begin:begin+4])
+        begin += 4
+        #NALU内容
+        NALUs.append(data_avc[begin:begin+nalu_length])
+        begin += nalu_length
+
+    assert begin==size_bytes
+    return NALUs
+
 # def parse_FLV_TAG1(f_tag):
 #     PreviousTagSize, *_ = struct.unpack('>I', f_tag.read(4))
 #     #print('PreviousTagSize0', PreviousTagSize)
@@ -130,18 +185,23 @@ def calculate_audio_object_type(data_tag):
     audio_object_type = (left & 0xF8) >> 3
     return  audio_object_type
 
-def make_adts_headers(tag_data_size, audio_object_type, sampling_frequency_index):
+def make_adts_headers(data_size, audio_object_type, sampling_frequency_index):
     '''
     according to the doc, add adts headers
+    for flv size_data = size_tag - 2!
     '''
     # adts_fixed_header
+    #ID 0 MPEG-4  Layer：always: '00'  profile "1" protection_absent LC
     bit_headers = format(0xFFF, 'b') + "0" + "00" + "1" + \
-    format(audio_object_type-1, "02b") + format(sampling_frequency_index, "04b") + \
+    format(audio_object_type-1, "02b") + format(sampling_frequency_index+1, "04b") + \
     "0" + format(2, "03b") + "0" + "0"
+
     #adts_variable_header
-    bit_headers += "0" + "0" + format(7+tag_data_size, "013b") + format(0x7FF, "011b") + "00"
+    bit_headers += "0" + "0" + format(7+data_size, "013b") + format(0x7FF, "011b") + "00"
     int_list = [int(bit_headers[8*x:8*x+8], 2) for x in range(7)]
     return bytes(int_list)
+
+
 
 
 class Parse:
@@ -167,8 +227,9 @@ class Parse:
         according to the doc, add adts headers
         '''
         # adts_fixed_header
+        # ID 0 MPPEG-4  layer always '00'
         bit_headers = format(0xFFF, 'b') + "0" + "00" + "1" + \
-        format(self._audio_object_type-1, "02b") + format(self._sampling_frequency_index, "04b") + \
+        format(self._audio_object_type-1, "02b") + format(self._sampling_frequency_index+1, "04b") + \
         "0" + format(2, "03b") + "0" + "0"
         #adts_variable_header
         bit_headers += "0" + "0" + format(7+tag_data_size, "013b") + format(0x7FF, "011b") + "00"
@@ -223,9 +284,25 @@ def test_read_flvfile_header_without_struct():
     print('len_header', len_header)
 
 
-
+# def dump_tagdata
 
 if __name__ == '__main__':
+
+    fname_out_acc = './out.aac'
+    f_out_acc = open(fname_out_acc, 'wb')
+
+    def fn_acc_frame(frame):
+        f_out_acc.write(frame)
+
+    fname_out_h264 = './out.h264'
+    f_out_h264 = open(fname_out_h264, 'wb')
+
+    def fn_h264_frame(frame):
+        f_out_h264.write(frame)
+
+
+
+
     fname = './xb2_kos.flv'
     f_stream = open(fname, 'rb')
     parse = Parse(f_stream)
@@ -236,9 +313,9 @@ if __name__ == '__main__':
 
     #--------------flv body-------------------
     audio_tag_header = None
-
+    video_tag_header = None
     i = 0
-    while i < 100:
+    while i < 10:
         i += 1
         print(i)
         data_bytes = f_stream.read(4)
@@ -252,41 +329,101 @@ if __name__ == '__main__':
         #print(header)
         #print(header['TagType'] ==TagType.SCRIPT)
         #-------------DATA--------------------
-        datasize_tag = header['DataSize']
-        data_tag = f_stream.read(datasize_tag)
+        size_data_tag = header['DataSize']
+        data_tag = f_stream.read(size_data_tag)
         tag_type = header['TagType']
         if tag_type == TagType.AUDIO:
             #print(audio_tag_header)
             if audio_tag_header is None:
+                #说明是第一帧，丢弃 只有size 4
                 audio_tag_header = TagHeaderAudio(format(data_tag[0], 'b'))
                 #print(audio_tag_header)
                 sampling_frequency_index = calculate_sampling_frequency_index(data_tag)
                 audio_object_type = calculate_audio_object_type(data_tag)
                 print('sampling_frequency_index', sampling_frequency_index)
                 print('audio_object_type', audio_object_type)
+                continue    
+            else:
+                adts_headers = make_adts_headers(size_data_tag-2, audio_object_type, sampling_frequency_index)
+                print('adts_headers', adts_headers)
+                #重组aac一帧 加入了adts
+                print('size', size_data_tag)
+                frame_acc = adts_headers + data_tag[2:]
+                #print(adts_headers, data_tag[2:])
+                #写入
+                fn_acc_frame(frame_acc)
+                #解码
+                #packets = codec_audio.parse(frame_acc)
+                #not parse #https://github.com/PyAV-Org/PyAV/issues/155
+                # packet = av.packet.Packet(frame_acc)
+                # frames = codec_audio.decode(packet)
+                # print('frames', frames)
+                # for frame in frames:
+                #     decoded_data = frame.planes[0].to_bytes()
+                #     play_obj = sa.play_buffer(decoded_data, 2, 2, 44100)
+                #     play_obj.wait_done()
 
-
-            adts_headers = make_adts_headers(datasize_tag-2, audio_object_type, sampling_frequency_index)
-            print(adts_headers)
-            #重组aac一帧 加入了adts
-            print('size', datasize_tag)
-            data_aac = adts_headers + data_tag[2:]
-            #解码？
-            audioData = BytesIO(data_aac)
-            sound = AudioSegment.from_file(audioData, format="aac")
-
-            # packets = codec_audio.parse(data_aac)
-            # print(packets)
             # for packet in packets: 
             #     frames = codec_audio.decode(packet)
             #     print(frames)
-            #play_obj = sa.play_buffer(data_tag[2:], 2, 2, 44100)
-            #play_obj.wait_done()
-            break
-            
 
-
+            #break
         elif tag_type == TagType.VIDEO:
+            avc1 = parse_avc_from_tag_video(data_tag)
+            if avc1 is None:
+                continue
+
+            #print(f'size_data_tag {size_data_tag} ', avc1)
+            if avc1['AVCPacketType'] == AVCPacketType.NALU:
+                NALUs = parse_NALUs_from_avc_data(avc1['data'])
+                print(f'{i}NALUs', len(NALUs), NALUs)
+                if i == 4:
+                    #第一个NALU里有 BiliBili H264 Encoder v1.0 舍弃
+                    NALUs = NALUs[1:]
+
+                for nalu in NALUs:
+                    packet = av.packet.Packet(b"\x00\x00\x00\x01" + nalu)
+                    print(packet)
+                    frames = codec_video.decode(packet)
+                    print(frames)
+
+            # if data_tag[0] == 0x17 and data_tag[1] == 0x00: 
+            #     #header
+            #     video_tag_header = TagHeaderVideo(data_tag)
+            #     h264_data = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data# assert the video only have one sps and one pps 
+            # else:
+            #     h264_data = None
+            #     assert((data_tag[0] & 0xf) == 7) #assert for avc only AVC
+            #     if data_tag[1] == 0x1: # NALU
+            #         nalu_length = bytes_to_int(data_tag[5:9])
+            #         begin = 9
+            #         if begin + nalu_length == size_data_tag:
+            #             h264_data = b"\x00\x00\x00\x01" + data_tag[9:]
+            #         else:
+            #             while True:
+            #                 h264_data = b"\x00\x00\x00\x01" + data_tag[begin:begin+nalu_length]
+            #                 begin += nalu_length
+            #                 if begin == size_data_tag:
+            #                     break
+            #                 nalu_length = bytes_to_int(data_tag[begin:begin+4])
+            #                 begin += 4
+                            
+                        
+                        # packet = av.packet.Packet(h264_data)
+                        # print('video', packet)
+                        # frames = codec_audio.decode(packet)
+                        # print(frames)
+            #break
+
+            #fn_h264_frame(h264_data)
+                #packets = codec_video.parse(data)
+
+                # packets = codec_audio.parse(h264_data)
+                # print('video',packets)
+                # for packet in packets: 
+                #     frames = codec_audio.decode(packet)
+                #     print(frames)
+
             # and tag1['body']['AVCPacketType'] == 'NALU':
             #print(data)
             # packets = codec_video.parse(data)
@@ -298,7 +435,7 @@ if __name__ == '__main__':
             #     print('video frames', frames)
             pass
         else:
-            #暂时只读音频
+            #音频和视频
             continue
     #print(0x12== 18)
     
@@ -308,3 +445,5 @@ if __name__ == '__main__':
     #如果32位读取，移位
  
     f_stream.close()
+    f_out_acc.close()
+    f_out_h264.close()
