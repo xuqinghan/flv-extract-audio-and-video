@@ -1,6 +1,8 @@
 '''
-h264解码器需要的额外信息
+h264解码器需要的额外信息  实测就是h264 header部分的数据
 https://github.com/PyAV-Org/PyAV/pull/287
+
+
 '''
 
 import av

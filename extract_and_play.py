@@ -130,7 +130,7 @@ def parse_avc_from_tag_video(data_bytes):
             'data':  data_bytes[5:]} #包括NALU数据长度
  
 def parse_NALUs_from_avc_data(data_avc):
-    '''用于字节流形式的NALU  
+    '''用于字节流形式的NALU  多个NALU
         不加 b"\x00\x00\x00\x01"
     '''
     NALUs = []
