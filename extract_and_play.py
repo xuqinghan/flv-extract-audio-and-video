@@ -346,7 +346,7 @@ def test_parse(f_stream, fn_frame_acc, fn_frame_h264):
                 data_write = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data
                 #print('avc header')
                 #header 的 avc1['data'] 就是 extradata
-                #写这个导致异常退出！
+                #写这个导致异常退出！ 
                 #codec_video.extradata = avc1['data']
                 # #写header的数据 
                 # with open('./dumps/avc_header_for_saveh264.dump', 'wb') as f:
@@ -379,96 +379,95 @@ def test_parse(f_stream, fn_frame_acc, fn_frame_h264):
 
 if __name__ == '__main__':
 
+    codec_video = av.CodecContext.create('h264', 'r')
+    with open('./dumps/h264_extradata.dump', 'rb') as f:
+        extradata = f.read()
+    codec_video.extradata = extradata
 
-    #通过codec_name = container.streams[video_stream_index].codec_context
-    # with open('./dumps/h264_extradata.dump', 'rb') as f:
-    #     extradata = f.read()
-    #codec_video.extradata = extradata
+    # sample_rate = 24000
+    # sec_play = 10
+    # samples_play_once = sample_rate*sec_play
 
-    sample_rate = 24000
-    sec_play = 10
-    samples_play_once = sample_rate*sec_play
+    # audio_fifo = AudioFifo()
 
-    audio_fifo = AudioFifo()
+    # fname_out_acc = './dumps/out.aac'
+    # f_out_acc = open(fname_out_acc, 'wb')
 
-    fname_out_acc = './dumps/out.aac'
-    f_out_acc = open(fname_out_acc, 'wb')
-
-    def fn_frame_acc(bytes_frame, codec_audio):
-        #f_out_acc.write(bytes_frame)
-        pass
-        #解码
-        #packets = codec_audio.parse(frame_acc)
-        #not parse #https://github.com/PyAV-Org/PyAV/issues/155
-        packet = av.packet.Packet(bytes_frame)
-        frames = codec_audio.decode(packet)
-        print('audio frames', frames)
-        for frame in frames:
-            audio_fifo.write(frame)
-            # decoded_data = frame.planes[0].to_bytes()
-            # play_obj = sa.play_buffer(decoded_data, 2, 2, 44100)
-            # play_obj.wait_done()
-
-
-
-    fname_out_h264 = './dumps/out.h264'
-    f_out_h264 = open(fname_out_h264, 'wb')
-
-    def fn_frame_h264(bytes_frame, codec_video):
-        #f_out_h264.write(bytes_frame)
-        pass
-        # if codec_video is None:
-        #     #header 不需要解码
-        #     return
-        # #解码
-        # packet = av.packet.Packet(bytes_frame)
-        # #print(packet)
-        # frames_img = codec_video.decode(packet)
-        # #print(frames)
-        # for frame_img in frames_img:
-        #     #PIL
-        #     img = frame_img.to_image()
-        #     #opencv
-        #     img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
-        #     cv2.imshow("h264", img)
-        #     k = cv2.waitKey(1)
-        #     if k == 27: # ESC
-        #         break
-
-
-    fname = './xb2_kos.flv'
-    f_stream = open(fname, 'rb')
-
-    print('begin')
-    test_parse(f_stream, fn_frame_acc, fn_frame_h264)
-    #play
-    print('play audio')
-    frames = audio_fifo.read_many(samples=samples_play_once)
-    print(frames)
-    for frame in frames:
-        data_wait_play = frame.planes[0].to_bytes()
-        play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
-        play_obj.wait_done()
-    # while True:
-    #     if audio_fifo.samples >= samples_play_once:
-    #         print('player: get data from queue')
-    #         frame = audio_fifo.read(samples_play_once)
-    #         data_wait_play = frame.planes[0].to_bytes()
-    #         print('player: start play', datetime.now())
-    #         play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
-    #         play_obj.wait_done()
+    # def fn_frame_acc(bytes_frame, codec_audio):
+    #     #f_out_acc.write(bytes_frame)
+    #     pass
+    #     #解码
+    #     #packets = codec_audio.parse(frame_acc)
+    #     #not parse #https://github.com/PyAV-Org/PyAV/issues/155
+    #     packet = av.packet.Packet(bytes_frame)
+    #     frames = codec_audio.decode(packet)
+    #     print('audio frames', frames)
+    #     for frame in frames:
+    #         audio_fifo.write(frame)
+    #         # decoded_data = frame.planes[0].to_bytes()
+    #         # play_obj = sa.play_buffer(decoded_data, 2, 2, 44100)
+    #         # play_obj.wait_done()
 
 
 
-    #parse = Parse(f_stream)
+    # fname_out_h264 = './dumps/out.h264'
+    # f_out_h264 = open(fname_out_h264, 'wb')
+
+    # def fn_frame_h264(bytes_frame, codec_video):
+    #     #f_out_h264.write(bytes_frame)
+    #     pass
+    #     # if codec_video is None:
+    #     #     #header 不需要解码
+    #     #     return
+    #     # #解码
+    #     # packet = av.packet.Packet(bytes_frame)
+    #     # #print(packet)
+    #     # frames_img = codec_video.decode(packet)
+    #     # #print(frames)
+    #     # for frame_img in frames_img:
+    #     #     #PIL
+    #     #     img = frame_img.to_image()
+    #     #     #opencv
+    #     #     img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
+    #     #     cv2.imshow("h264", img)
+    #     #     k = cv2.waitKey(1)
+    #     #     if k == 27: # ESC
+    #     #         break
+
+
+    # # fname = './xb2_kos.flv'
+    # # f_stream = open(fname, 'rb')
+
+    # # print('begin')
+    # # test_parse(f_stream, fn_frame_acc, fn_frame_h264)
+    # # #play
+    # # print('play audio')
+    # # frames = audio_fifo.read_many(samples=samples_play_once)
+    # # print(frames)
+    # # for frame in frames:
+    # #     data_wait_play = frame.planes[0].to_bytes()
+    # #     play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
+    # #     play_obj.wait_done()
+    # # while True:
+    # #     if audio_fifo.samples >= samples_play_once:
+    # #         print('player: get data from queue')
+    # #         frame = audio_fifo.read(samples_play_once)
+    # #         data_wait_play = frame.planes[0].to_bytes()
+    # #         print('player: start play', datetime.now())
+    # #         play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
+    # #         play_obj.wait_done()
+
+
+
+    # #parse = Parse(f_stream)
 
 
     
-    #18 0x12 脚本
+    # #18 0x12 脚本
 
 
-    #如果32位读取，移位
+    # #如果32位读取，移位
  
-    f_stream.close()
-    f_out_acc.close()
-    f_out_h264.close()
+    # f_stream.close()
+    # f_out_acc.close()
+    # f_out_h264.close()

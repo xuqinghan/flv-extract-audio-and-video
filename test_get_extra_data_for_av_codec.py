@@ -4,8 +4,9 @@ https://github.com/PyAV-Org/PyAV/pull/287
 
 
 '''
-
+import time
 import av
+from av.bytesource import ByteSource
 
 container = av.open('xb2_kos.flv')
 
@@ -22,12 +23,22 @@ codec_name = container.streams[video_stream_index].codec_context.name
 print('codec_name', codec_name)
 codec_origin = container.streams[video_stream_index].codec_context
 extradata = codec_origin.extradata
+
 #bytes
 print('extradata', extradata)
 
-#创建解码器时加载
+
 codec_new = av.codec.CodecContext.create(codec_name, 'r')
 codec_new.extradata = extradata
 
 with open('./dumps/h264_extradata.dump', 'wb') as f:
     f.write(extradata)
+
+print(extradata)
+with open('./dumps/h264_extradata.dump', 'rb') as f:
+    extradata2 = f.read()
+print(extradata2)
+
+# exit code 3221226356
+#codec_new.extradata = extradata2
+codec_new.extradata = ByteSource(extradata2)
