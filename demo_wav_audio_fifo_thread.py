@@ -48,7 +48,14 @@ class Parser(threading.Thread):
             for frame in container.decode(stream):
                 #模拟每帧生产，传输时间
                 #time.sleep(self.sec_per_frame)
+                # if frame.pts == 93:
+                #     frame.pts = 92
+                frame.pts = None
                 self.audio_fifo.write(frame)
+                # except ValueError as e:
+                #     print(e)
+                #     pass
+
                 #print('parser: add data to queue')
     
         print('结束产生 退出解码线程')
@@ -81,16 +88,23 @@ class Player(threading.Thread):
 
 if __name__ == '__main__':
     #filename_audio = 'D:/dataset/多瑙河之波.wav'
+    #num_channels, BytsPerSample, sample_rate = 2, 2, 44100
     #只用来读参数
     # with open(filename_audio, 'rb') as f:
     #     num_channels, BytsPerSample, sample_rate, byte_rate = read_header_wav(f)
-    filename_audio = 'D:/dataset/多瑙河之波.aac'
-    num_channels, BytsPerSample, sample_rate = 2, 2, 44100
-    sec_play = 5
+    #filename_audio = 'D:/dataset/多瑙河之波.aac'
+    #aac 这样对了，但是速度太快 sec_play 要放大 而且采样率也不是44100 48000更合适
+    #num_channels, BytsPerSample, sample_rate = 2, 4, 24000
+    filename_audio = 'D:/dataset/多瑙河之波-手风琴.flv'
+    #frameFrame.pts (93) != expected (92); fix or set to None.
+    num_channels, BytsPerSample, sample_rate = 2, 4, 22050
+
+    sec_play = 20
     audio_fifo = AudioFifo()
 
     #简单启动2个coroutine 不能await
     sample_per_frame = 1024
+
     # 创建新线程
     parser = Parser(filename_audio, audio_fifo, sample_per_frame, sample_rate)
     player = Player(audio_fifo, num_channels, BytsPerSample, sample_rate, sec_play)

@@ -12,7 +12,7 @@ from enum import Enum
 import cv2
 import numpy as np
 import av
-codec_audio = av.CodecContext.create('aac', 'r')
+from av.audio.fifo import AudioFifo
 
 
 import simpleaudio as sa
@@ -109,25 +109,25 @@ def parseTAGheader(data_bytes):
      'timestamp':timestamp, 
      'StreamID':StreamID}
      
-def parse_avc_from_tag_video(data_bytes):
+def parse_avc_from_tag_video(data_tag_bytes):
     #4bit
-    FrameType_CodecID = data_tag[0]
-    CodecID = CodecIDVideo(data_tag[0] & 0x0F)
-    FrameType = data_tag[0] >> 4
-    print(f'CodecID, {CodecID} FrameType {FrameType}')
+    FrameType_CodecID = data_tag_bytes[0]
+    CodecID = CodecIDVideo(data_tag_bytes[0] & 0x0F)
+    FrameType = data_tag_bytes[0] >> 4
+    #print(f'CodecID, {CodecID} FrameType {FrameType}')
     if CodecIDVideo.AVC != CodecID:
         return None
 
     #只处理AVC
-    type_AVCPacket = AVCPacketType(data_tag[1])
-    CompoistionTime = data_tag[3]
+    type_AVCPacket = AVCPacketType(data_tag_bytes[1])
+    CompoistionTime = data_tag_bytes[3]
 
 
     #begin_DATA = 5
     return  {'AVCPacketType': type_AVCPacket, 
             'keyframe': H264FrameType(FrameType), 
             'CompoistionTime' : CompoistionTime,
-            'data':  data_bytes[5:]} #包括NALU数据长度
+            'data':  data_tag_bytes[5:]} #包括NALU数据长度
  
 def parse_NALUs_from_avc_data(data_avc):
     '''用于字节流形式的NALU  多个NALU
@@ -285,47 +285,22 @@ def test_read_flvfile_header_without_struct():
     print('len_header', len_header)
 
 
-# def dump_tagdata
-
-if __name__ == '__main__':
-
+def test_parse(f_stream, fn_frame_acc, fn_frame_h264):
+    codec_audio = av.CodecContext.create('aac', 'r')
     codec_video = av.CodecContext.create('h264', 'r')
-    #通过codec_name = container.streams[video_stream_index].codec_context
-    # with open('./dumps/h264_extradata.dump', 'rb') as f:
-    #     extradata = f.read()
-    # codec_video.extradata = extradata
-
-
-    fname_out_acc = './dumps/out.aac'
-    f_out_acc = open(fname_out_acc, 'wb')
-
-    def fn_acc_frame(frame):
-        f_out_acc.write(frame)
-
-    fname_out_h264 = './dumps/out.h264'
-    f_out_h264 = open(fname_out_h264, 'wb')
-
-    def fn_h264_frame(frame):
-        f_out_h264.write(frame)
-
-
-
-
-    fname = './xb2_kos.flv'
-    f_stream = open(fname, 'rb')
-    parse = Parse(f_stream)
     #------------flv header-----------------
     #test_read_flvfile_header()
     flvfile_header = parse_flvfile_header(f_stream)
-    print(flvfile_header)
+    #print(flvfile_header)
 
     #--------------flv body-------------------
     audio_tag_header = None
     video_tag_header = None
+    first_video = True
     i = 0
     while i < 1500:
         i += 1
-        print(i)
+        #print(i)
         data_bytes = f_stream.read(4)
         PreviousTagSize = bytes_to_int(data_bytes)
         #print('PreviousTagSize', PreviousTagSize)
@@ -348,34 +323,18 @@ if __name__ == '__main__':
                 #print(audio_tag_header)
                 sampling_frequency_index = calculate_sampling_frequency_index(data_tag)
                 audio_object_type = calculate_audio_object_type(data_tag)
-                print('sampling_frequency_index', sampling_frequency_index)
-                print('audio_object_type', audio_object_type)
-                continue    
+                #print('sampling_frequency_index', sampling_frequency_index)
+                #print('audio_object_type', audio_object_type)
+                continue
             else:
                 adts_headers = make_adts_headers(size_data_tag-2, audio_object_type, sampling_frequency_index)
-                print('adts_headers', adts_headers)
+                #print('adts_headers', adts_headers)
                 #重组aac一帧 加入了adts
                 #print('size', size_data_tag)
                 frame_acc = adts_headers + data_tag[2:]
                 #print(adts_headers, data_tag[2:])
                 #写入
-                fn_acc_frame(frame_acc)
-                #解码
-                #packets = codec_audio.parse(frame_acc)
-                #not parse #https://github.com/PyAV-Org/PyAV/issues/155
-                # packet = av.packet.Packet(frame_acc)
-                # frames = codec_audio.decode(packet)
-                # print('frames', frames)
-                # for frame in frames:
-                #     decoded_data = frame.planes[0].to_bytes()
-                #     play_obj = sa.play_buffer(decoded_data, 2, 2, 44100)
-                #     play_obj.wait_done()
-
-            # for packet in packets: 
-            #     frames = codec_audio.decode(packet)
-            #     print(frames)
-
-            #break
+                fn_frame_acc(frame_acc, codec_audio)
         elif tag_type == TagType.VIDEO:
             avc1 = parse_avc_from_tag_video(data_tag)
             if avc1 is None:
@@ -386,90 +345,124 @@ if __name__ == '__main__':
                 video_tag_header = TagHeaderVideo(data_tag)
                 data_write = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data
                 #print('avc header')
-                codec_video.extradata = avc1['data']
-                # header 的 avc1['data'] 就是 extradata 
-                # #写header的数据
-                # with open('./dumps/avc_header.dump', 'wb') as f:
-                #     extradata = f.write(avc1['data'])
-                with open('./dumps/avc_header_for_saveh264.dump', 'wb') as f:
-                    extradata = f.write(data_write)
-                fn_h264_frame(data_write)
+                #header 的 avc1['data'] 就是 extradata
+                #写这个导致异常退出！
+                #codec_video.extradata = avc1['data']
+                # #写header的数据 
+                # with open('./dumps/avc_header_for_saveh264.dump', 'wb') as f:
+                #     extradata = f.write(data_write)
+
+                fn_frame_h264(data_write, None)
             elif avc1['AVCPacketType'] == AVCPacketType.NALU:
                 NALUs = parse_NALUs_from_avc_data(avc1['data'])
                 #print(f'{i}NALUs', len(NALUs), NALUs)
-                if i == 4:
+                #if i == 4:
+                if first_video:
+                    #print('first idx=', i)
                     #第一个NALU里有 BiliBili H264 Encoder v1.0 舍弃
                     NALUs = NALUs[1:]
+                    first_video = False
 
                 for nalu in NALUs:
                     data_write = b"\x00\x00\x00\x01" + nalu
-                    fn_h264_frame(data_write)
-                    packet = av.packet.Packet(data_write)
-                    #print(packet)
-                    frames = codec_video.decode(packet)
-                    #print(frames)
-                    for frame in frames:
-                        #PIL格式
-                        img = frame.to_image()
-                        #opencv格式
-                        img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
-                        #print(img)
-                        cv2.imshow("h264", img)
-                        k = cv2.waitKey(1)
-                        if k == 27: # ESC
-                            break
+                    fn_frame_h264(data_write, codec_video)
 
-            # if data_tag[0] == 0x17 and data_tag[1] == 0x00: 
-            #     #header
-            #     video_tag_header = TagHeaderVideo(data_tag)
-            #     h264_data = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data# assert the video only have one sps and one pps 
-            # else:
-            #     h264_data = None
-            #     assert((data_tag[0] & 0xf) == 7) #assert for avc only AVC
-            #     if data_tag[1] == 0x1: # NALU
-            #         nalu_length = bytes_to_int(data_tag[5:9])
-            #         begin = 9
-            #         if begin + nalu_length == size_data_tag:
-            #             h264_data = b"\x00\x00\x00\x01" + data_tag[9:]
-            #         else:
-            #             while True:
-            #                 h264_data = b"\x00\x00\x00\x01" + data_tag[begin:begin+nalu_length]
-            #                 begin += nalu_length
-            #                 if begin == size_data_tag:
-            #                     break
-            #                 nalu_length = bytes_to_int(data_tag[begin:begin+4])
-            #                 begin += 4
-                            
-                        
-                        # packet = av.packet.Packet(h264_data)
-                        # print('video', packet)
-                        # frames = codec_audio.decode(packet)
-                        # print(frames)
-            #break
-
-            #fn_h264_frame(h264_data)
-                #packets = codec_video.parse(data)
-
-                # packets = codec_audio.parse(h264_data)
-                # print('video',packets)
-                # for packet in packets: 
-                #     frames = codec_audio.decode(packet)
-                #     print(frames)
-
-            # and tag1['body']['AVCPacketType'] == 'NALU':
-            #print(data)
-            # packets = codec_video.parse(data)
-            # #print('video', tag1['body'])
-            # imgs = []
-            # for packet in packets: 
-            #     frames = codec.decode(packet)
-            #     #frames = codec.decode(packet)
-            #     print('video frames', frames)
-            pass
         else:
-            #音频和视频
+            #只处理音频和视频 其他帧放弃
             continue
-    #print(0x12== 18)
+
+    return 
+
+
+    
+
+
+if __name__ == '__main__':
+
+
+    #通过codec_name = container.streams[video_stream_index].codec_context
+    # with open('./dumps/h264_extradata.dump', 'rb') as f:
+    #     extradata = f.read()
+    #codec_video.extradata = extradata
+
+    sample_rate = 24000
+    sec_play = 10
+    samples_play_once = sample_rate*sec_play
+
+    audio_fifo = AudioFifo()
+
+    fname_out_acc = './dumps/out.aac'
+    f_out_acc = open(fname_out_acc, 'wb')
+
+    def fn_frame_acc(bytes_frame, codec_audio):
+        #f_out_acc.write(bytes_frame)
+        pass
+        #解码
+        #packets = codec_audio.parse(frame_acc)
+        #not parse #https://github.com/PyAV-Org/PyAV/issues/155
+        packet = av.packet.Packet(bytes_frame)
+        frames = codec_audio.decode(packet)
+        print('audio frames', frames)
+        for frame in frames:
+            audio_fifo.write(frame)
+            # decoded_data = frame.planes[0].to_bytes()
+            # play_obj = sa.play_buffer(decoded_data, 2, 2, 44100)
+            # play_obj.wait_done()
+
+
+
+    fname_out_h264 = './dumps/out.h264'
+    f_out_h264 = open(fname_out_h264, 'wb')
+
+    def fn_frame_h264(bytes_frame, codec_video):
+        #f_out_h264.write(bytes_frame)
+        pass
+        # if codec_video is None:
+        #     #header 不需要解码
+        #     return
+        # #解码
+        # packet = av.packet.Packet(bytes_frame)
+        # #print(packet)
+        # frames_img = codec_video.decode(packet)
+        # #print(frames)
+        # for frame_img in frames_img:
+        #     #PIL
+        #     img = frame_img.to_image()
+        #     #opencv
+        #     img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
+        #     cv2.imshow("h264", img)
+        #     k = cv2.waitKey(1)
+        #     if k == 27: # ESC
+        #         break
+
+
+    fname = './xb2_kos.flv'
+    f_stream = open(fname, 'rb')
+
+    print('begin')
+    test_parse(f_stream, fn_frame_acc, fn_frame_h264)
+    #play
+    print('play audio')
+    frames = audio_fifo.read_many(samples=samples_play_once)
+    print(frames)
+    for frame in frames:
+        data_wait_play = frame.planes[0].to_bytes()
+        play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
+        play_obj.wait_done()
+    # while True:
+    #     if audio_fifo.samples >= samples_play_once:
+    #         print('player: get data from queue')
+    #         frame = audio_fifo.read(samples_play_once)
+    #         data_wait_play = frame.planes[0].to_bytes()
+    #         print('player: start play', datetime.now())
+    #         play_obj = sa.play_buffer(data_wait_play, 2, 4, sample_rate)
+    #         play_obj.wait_done()
+
+
+
+    #parse = Parse(f_stream)
+
+
     
     #18 0x12 脚本
 
