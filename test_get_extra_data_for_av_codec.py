@@ -4,7 +4,7 @@ https://github.com/PyAV-Org/PyAV/pull/287
 
 
 '''
-import time
+import copy
 import av
 from av.bytesource import ByteSource
 
@@ -41,4 +41,5 @@ print(extradata2)
 
 # exit code 3221226356
 #codec_new.extradata = extradata2
-codec_new.extradata = ByteSource(extradata2)
+codec_new.extradata = copy.deepcopy(extradata)
+#codec_new.extradata = ByteSource(extradata2)

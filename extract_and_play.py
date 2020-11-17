@@ -205,17 +205,22 @@ def make_adts_headers(data_size, audio_object_type, sampling_frequency_index):
 
 
 
-class Parse:
-
-    def __init__(self, flv_stream):
-        self.flv_stream = flv_stream
+class SourceFlv:
+    '''
+        1个flv文件作为"直播源", 
+        1 按帧偏移时间定时，推送。
+        2 文件播放完毕，循环继续推送，使得看起来好像是直播一样
+    '''
+    def __init__(self, flv_name, fn_frame_acc, fn_frame_h264):
+        self.flv_name = flv_name
         #self._bytes_begin = 13 # 3 + 1 + 1 + 4 + 4
         self._audio_tag_header = None
-
+        self.fn_frame_acc = fn_frame_acc
+        self.fn_frame_h264 = fn_frame_h264
 
     def calculate_audio_specific_config(self, bytes_string):
         '''
-        calculate sampling frequency index value
+            calculate sampling frequency index value
         '''
         left = bytes_string[0]
         right = bytes_string[1]
@@ -225,7 +230,7 @@ class Parse:
 
     def make_adts_headers(self, tag_data_size):
         '''
-        according to the doc, add adts headers
+            according to the doc, add adts headers
         '''
         # adts_fixed_header
         # ID 0 MPPEG-4  layer always '00'
@@ -237,27 +242,89 @@ class Parse:
         int_list = [int(bit_headers[8*x:8*x+8], 2) for x in range(7)]
         return bytes(int_list)
 
-    def extract(self):
+    def extract_round1(self):
         '''
-        seperate the audio from the vedio.
+            seperate the audio from the vedio.
         '''
         #current = self._bytes_begin
-        while self.flv_stream:
+        f_stream = open(self.fname, 'rb')
+
+        while flv_stream:
             
-            tag_type = self._flv_data[current]         
-            tag_data_size = bytes_to_int(self._flv_data[current+1:current+4])
-            tag_data = self._flv_data[current+11:current+11+tag_data_size]
+            data_bytes = f_stream.read(4)
+            PreviousTagSize = bytes_to_int(data_bytes)
+            #print('PreviousTagSize', PreviousTagSize)
+            #------------HEAD-------------
+            #print('----------------flv_tag begin----------------')
+            data_bytes = f_stream.read(11)
+            header = parseTAGheader(data_bytes)
+            #header = pares_FLVTAGHeader(f_stream)
+            #print(header)
+            #print(header['TagType'] ==TagType.SCRIPT)
+            #-------------DATA--------------------
+            size_data_tag = header['DataSize']
+            data_tag = f_stream.read(size_data_tag)
+            tag_type = header['TagType']
+
+            #------------时间戳----------------
+
+
             if tag_type == AUDIO:
-                if self._audio_tag_header is None:
-                    self._audio_tag_header = TagHeaderAudio(format(tag_data[0], 'b'))
-                    assert(self._audio_tag_header.soundformat == 10)
-                    assert(tag_data[1] == 0x00)
-                    self.calculate_audio_specific_config(tag_data[2:])
+                #print(audio_tag_header)
+                if audio_tag_header is None:
+                    #说明是第一帧，丢弃 只有size 4
+                    audio_tag_header = TagHeaderAudio(format(data_tag[0], 'b'))
+                    #print(audio_tag_header)
+                    sampling_frequency_index = calculate_sampling_frequency_index(data_tag)
+                    audio_object_type = calculate_audio_object_type(data_tag)
+                    #print('sampling_frequency_index', sampling_frequency_index)
+                    #print('audio_object_type', audio_object_type)
+                    continue
                 else:
-                    self._acc_data += self.make_adts_headers(tag_data_size-2) + tag_data[2:]
-            current += 11 + tag_data_size
-            assert(bytes_to_int(self._flv_data[current:current+4]) == 11 + tag_data_size)
-            current += 4
+                    adts_headers = make_adts_headers(size_data_tag-2, audio_object_type, sampling_frequency_index)
+                    #print('adts_headers', adts_headers)
+                    #重组aac一帧 加入了adts
+                    #print('size', size_data_tag)
+                    frame_acc = adts_headers + data_tag[2:]
+                    #print(adts_headers, data_tag[2:])
+                    #写入
+                    self.fn_frame_acc(frame_acc)
+            elif tag_type == TagType.VIDEO:
+                avc1 = parse_avc_from_tag_video(data_tag)
+                if avc1 is None:
+                    continue
+
+                #print(f'size_data_tag {size_data_tag} ', avc1)
+                if avc1['AVCPacketType'] == AVCPacketType.header:
+                    video_tag_header = TagHeaderVideo(data_tag)
+                    data_write = b"\x00\x00\x00\x01" + video_tag_header.sps_data + b"\x00\x00\x00\x01" + video_tag_header.pps_data
+                    #print('avc header')
+                    #header 的 avc1['data'] 就是 extradata
+                    #写这个导致异常退出！ 
+                    #codec_video.extradata = avc1['data']
+                    # #写header的数据 
+                    # with open('./dumps/avc_header_for_saveh264.dump', 'wb') as f:
+                    #     extradata = f.write(data_write)
+
+                    self.fn_frame_h264(data_write, None)
+                elif avc1['AVCPacketType'] == AVCPacketType.NALU:
+                    NALUs = parse_NALUs_from_avc_data(avc1['data'])
+                    #print(f'{i}NALUs', len(NALUs), NALUs)
+                    #if i == 4:
+                    if first_video:
+                        #print('first idx=', i)
+                        #第一个NALU里有 BiliBili H264 Encoder v1.0 舍弃
+                        NALUs = NALUs[1:]
+                        first_video = False
+
+                    for nalu in NALUs:
+                        data_write = b"\x00\x00\x00\x01" + nalu
+                        self.fn_frame_h264(data_write, codec_video)
+
+            else:
+                #只处理音频和视频 其他帧放弃
+                continue
+
 
 def test_read_flvfile_header_without_struct():
     '''不用struct'''
