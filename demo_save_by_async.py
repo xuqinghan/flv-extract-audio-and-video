@@ -15,6 +15,8 @@
 
 '''
 import av
+from av.video.frame import VideoFrame
+
 import numpy as np
 #import cv2
 from datetime import datetime
@@ -52,8 +54,27 @@ from rx.subject import Subject
 # sampleRate = 44100
 # elaspe_aac_package = sampleNumber/sampleRate
 
+class RecordVideo(object):
+    """docstring for  RecordVideo"""
+    def __init__(self):
+        super(RecordVideo, self).__init__()
+        self.container = av.open('test111.mp4', mode='w')
+        self.stream_video = self.container.add_stream('h264', rate=24)
+        self.stream_video.width = 384
+        self.stream_video.height = 288
+        self.stream_video.pix_fmt = 'yuv420p'
 
-async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, sender):
+    def end(self):
+        # Flush stream
+        for packet in self.stream_video.encode():
+            print(packet)
+            self.container.mux(packet)
+
+        # Close the file
+        self.container.close()
+
+
+async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_need_record, sender):
     '''
         模拟直播1轮视频文件，用pts作为延迟，模拟直播速度
         每次 pts从0开始 
@@ -61,7 +82,9 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, sender
     #异步模式下卡死？
     #while True:
     #模拟直播开始
-    container = av.open(str(path_to_video))
+    #container = av.open(str(path_to_video))
+    container = av.open(path_to_video, mode='r')
+
 
     print('打开了视频', path_to_video)
     #i = 0
@@ -70,15 +93,61 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, sender
     #ts_0 = datetime.now().timestamp()
 
     elapse = 0.01
+    container_out = None
     #ts_decoder_start = time.monotonic()
+    pts_save_t0 = 0
+
 
     for frame in container.decode(video=0, audio=0):
+        stream_video_in = container.streams.video[0]
+        #print('time_base', stream_video_in.time_base)
         if event_live_end.is_set():
             #停止直播，退出
-            return
+            break
 
         kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
-        sender(kind, frame)
+        if kind == 'h264':
+            #img = frame.to_image()
+            print('发送走', frame)
+            #sender(kind, frame)
+
+        if event_need_record.is_set():
+            #录制
+            if container_out is None:
+                #record = RecordVideo()
+                container_out = av.open('test111.mp4', mode='w')
+                stream_video = container_out.add_stream('h264', rate=24)
+                #stream_video.time_base = Fraction(1, 48000)
+                stream_video.time_base = stream_video_in.time_base
+                stream_video.width = 384
+                stream_video.height = 288
+                stream_video.pix_fmt = 'yuv420p'
+                stream_audio = container_out.add_stream('aac', rate=44100)
+                pts_save_t0 = frame.pts
+
+            print('偏移前', frame.pts, frame.dts, frame.pts)
+            frame.pts = frame.pts - pts_save_t0
+            print('偏移后', frame.pts, frame.dts, frame.pts)
+            #print('stream time_base', stream_video.time_base)
+            #print()
+            if kind == 'h264':
+                packets = stream_video.encode(frame)
+                print(packets)
+                for packet in packets:
+                    container_out.mux(packet)
+            elif kind == 'aac':
+                #清空pts
+                frame.pts = None
+                for packet in stream_audio.encode(frame):
+                    container_out.mux(packet)
+        else:
+            #停止
+            if container_out is not None:
+                print('停止直播')
+                # Close the file
+                container_out.close()
+                container_out = None
+
         # if i > 100:
         #     break
         #print('pts', frame.pts)
@@ -136,6 +205,11 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, sender
         #print(kind)
         #i += 1
 
+
+
+
+
+
 class SaverMock:
     def __init__(self, event_need_record):
         self.event_need_record = event_need_record
@@ -148,60 +222,87 @@ class SaverMock:
     def on_frame(self, args):
         #print(self, args)
         if self.event_need_record.is_set():
+            #玩家通知开始录像
             event, frame = args
             if self.is_recording:
+                #开始录像
                 print('模拟收到，保存', event, frame)
 
                 if event == 'h264':
-                    for packet in self.stream_video.encode(frame):
+                    # print(frame.pict_type)
+                    # print(frame.key_frame)
+                    # print(frame.interlaced_frame)
+                    # for packet in self.stream_video.encode(frame):
+                    #     try:
+                    #         self.container.mux(packet)
+                    #img = frame.to_image()
+                    #print(img)
+                    #frame = VideoFrame.from_image(img)
+                    # try:
+                    #     packets = self.stream_video.encode(frame)
+                    # except av.error.ProtocolNotFoundError:
+                    #     print('ProtocolNotFoundError in on_frame')
+                    #packets = []
+                    print('收到图像',frame)
+                    #frame = VideoFrame.from_image(data)
+                    print('frame',frame)
+
+                    try:
+                        packets = self.stream_video.encode(frame)
+                    except av.error.ProtocolNotFoundError:
+                        print('ProtocolNotFoundError in on_frame')
+                        packets = []
+
+                    print('packets', packets)
+                    for packet in packets:
+                        #specified frame type (3) at 0 is not compatible with keyframe interval
                         self.container.mux(packet)
-                elif event == 'aac':
-                    pass
+                # elif event == 'aac':
+                #     pass
             else:
-                #没开始保存
+                #没开始录像
                 if event == 'h264':
                     self.start(frame)
         else:
+            #玩家通知停止录像
             if self.is_recording:
+                #正在录像
                 self.is_recording = False
                 print('停止录像')
                 self.end()
             else:
-                #停止中
+                #本来停止中，玩家通知停止，无动作
                 pass
 
-    def start(self, frame_video):
+    def start(self, frame):
         print('开始录像')
         self.is_recording = True
-        print(frame_video.width, frame_video.height, frame_video.format.name)
+        #print(frame_video.width, frame_video.height, frame_video.format.name)
         self.container = av.open(f'{datetime.now().isoformat()}.mp4', mode='w')
         fps = 24
         self.stream_video = self.container.add_stream('h264', rate=fps)
-        self.stream_video.width = frame_video.width
-        self.stream_video.height = frame_video.height
-        #self.stream_video.pix_fmt = 'yuv420p'
-        self.stream_video.pix_fmt = frame_video.format.name
+        # self.stream_video.width = frame_video.width
+        # self.stream_video.height = frame_video.height
+        # #self.stream_video.pix_fmt = 'yuv420p'
+        # self.stream_video.pix_fmt = frame_video.format.name
+        self.stream_video.width = 384
+        self.stream_video.height = 288
+        self.stream_video.pix_fmt = 'yuv420p'
+
 
     def end(self):
         # Flush stream
-        for packet in self.stream_video.encode():
-            self.container.mux(packet)
-
+        try:
+            for packet in self.stream_video.encode():
+                self.container.mux(packet)
+        except av.error.ProtocolNotFoundError:
+            print('ProtocolNotFoundError in end')
         # Close the file
         self.container.close()
+        self.container = None
 
 
-async def main(event_loop):
-    #主循环不退出
-    co1 = mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, sender_mock)
-    #event_loop.create_task()
-    #创建event_loop
-    co2 = client_mock()
-    #print(co1)
-    task1 = event_loop.create_task(co1)
-    task2 = event_loop.create_task(co2)
-    await task1
-    await task2
+
     # while True:
     #     await asyncio.sleep(1)
 
@@ -230,12 +331,26 @@ if __name__ == '__main__':
     async def client_mock():
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
         print('客户操作')
-        await asyncio.sleep(3)
+        await asyncio.sleep(20)
         print('模拟玩家开始直播')
         event_need_record._loop.call_soon_threadsafe(event_need_record.set)
-        await asyncio.sleep(20)
+        await asyncio.sleep(30)
         print('模拟玩家停止直播')
         event_need_record._loop.call_soon_threadsafe(event_need_record.clear)
+
+
+    async def main(event_loop):
+        #主循环不退出
+        co1 = mock_live_flv_round1(str(path_to_video), id_vehicle, event_live_end, event_need_record, sender_mock)
+        #event_loop.create_task()
+        #创建event_loop
+        co2 = client_mock()
+        #print(co1)
+        task1 = event_loop.create_task(co1)
+        task2 = event_loop.create_task(co2)
+        await task1
+        await task2
+
 
 
     event_loop = asyncio.get_event_loop()

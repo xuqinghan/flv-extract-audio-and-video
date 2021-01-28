@@ -19,16 +19,18 @@ if __name__ == '__main__':
 
         kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
         if kind == 'h264':
-            for packet in stream_video.encode(frame):
+            packets = stream_video.encode(frame)
+            print(packets)
+            for packet in packets:
                 container_out.mux(packet)
         elif kind == 'aac':
             frame.pts = None
             for packet in stream_audio.encode(frame):
                 container_out.mux(packet)
 
-    # Flush stream
-    for packet in stream_video.encode():
-        container_out.mux(packet)
+    # # Flush stream
+    # for packet in stream_video.encode():
+    #     container_out.mux(packet)
 
     # Close the file
     container_out.close()
