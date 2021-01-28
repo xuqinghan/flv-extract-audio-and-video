@@ -63,13 +63,18 @@ class RecordVideo(object):
         self.stream_video.width = 384
         self.stream_video.height = 288
         self.stream_video.pix_fmt = 'yuv420p'
+        self.stream_audio = self.container.add_stream('aac', rate=44100)
 
-    def end(self):
-        # Flush stream
-        for packet in self.stream_video.encode():
-            print(packet)
+    def save_frame1_audio(self, frame):
+        frame.pts = None
+        for packet in self.stream_audio.encode(frame):
             self.container.mux(packet)
 
+    def save_frame1_video(self, frame):
+        for packet in self.stream_video.encode(frame):
+            self.container.mux(packet)
+
+    def end(self):
         # Close the file
         self.container.close()
 
@@ -93,7 +98,8 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
     #ts_0 = datetime.now().timestamp()
 
     elapse = 0.01
-    container_out = None
+    #container_out = None
+    record1_video = None
     #ts_decoder_start = time.monotonic()
     pts_save_t0 = 0
 
@@ -113,16 +119,16 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
 
         if event_need_record.is_set():
             #录制
-            if container_out is None:
-                #record = RecordVideo()
-                container_out = av.open('test111.mp4', mode='w')
-                stream_video = container_out.add_stream('h264', rate=24)
-                #stream_video.time_base = Fraction(1, 48000)
-                stream_video.time_base = stream_video_in.time_base
-                stream_video.width = 384
-                stream_video.height = 288
-                stream_video.pix_fmt = 'yuv420p'
-                stream_audio = container_out.add_stream('aac', rate=44100)
+            if record1_video is None:
+                record1_video = RecordVideo()
+                # container_out = av.open('test111.mp4', mode='w')
+                # stream_video = container_out.add_stream('h264', rate=24)
+                # #stream_video.time_base = Fraction(1, 48000)
+                # stream_video.time_base = stream_video_in.time_base
+                # stream_video.width = 384
+                # stream_video.height = 288
+                # stream_video.pix_fmt = 'yuv420p'
+                # stream_audio = container_out.add_stream('aac', rate=44100)
                 pts_save_t0 = frame.pts
 
             print('偏移前', frame.pts, frame.dts, frame.pts)
@@ -131,22 +137,26 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
             #print('stream time_base', stream_video.time_base)
             #print()
             if kind == 'h264':
-                packets = stream_video.encode(frame)
-                print(packets)
-                for packet in packets:
-                    container_out.mux(packet)
+                # packets = stream_video.encode(frame)
+                # print(packets)
+                # for packet in packets:
+                #     container_out.mux(packet)
+                record1_video.save_frame1_video(frame)
             elif kind == 'aac':
-                #清空pts
-                frame.pts = None
-                for packet in stream_audio.encode(frame):
-                    container_out.mux(packet)
+                # #清空pts
+                # frame.pts = None
+                # for packet in stream_audio.encode(frame):
+                #     container_out.mux(packet)
+                record1_video.save_frame1_audio(frame)
         else:
             #停止
-            if container_out is not None:
+            if record1_video is not None:
                 print('停止直播')
+                record1_video.end()
+                record1_video = None
                 # Close the file
-                container_out.close()
-                container_out = None
+                #container_out.close()
+                #container_out = None
 
         # if i > 100:
         #     break
