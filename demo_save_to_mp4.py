@@ -140,23 +140,56 @@ class SaverMock:
     def __init__(self, event_need_record):
         self.event_need_record = event_need_record
         self.is_recording = False
+        self.container = None
+        self.stream_video = None
+        self.stream_audio = None
+        
 
     def on_frame(self, args):
         #print(self, args)
         if self.event_need_record.is_set():
+            event, frame = args
             if self.is_recording:
-                event, data = args
-                print('模拟收到，保存', event, data)
+                print('模拟收到，保存', event, frame)
+
+                if event == 'h264':
+                    for packet in self.stream_video.encode(frame):
+                        self.container.mux(packet)
+                elif event == 'aac':
+                    pass
             else:
-                self.is_recording = True
-                print('开始录像')
+                #没开始保存
+                if event == 'h264':
+                    self.start(frame)
         else:
             if self.is_recording:
                 self.is_recording = False
                 print('停止录像')
+                self.end()
             else:
                 #停止中
                 pass
+
+    def start(self, frame_video):
+        print('开始录像')
+        self.is_recording = True
+        print(frame_video.width, frame_video.height, frame_video.format.name)
+        self.container = av.open(f'{datetime.now().isoformat()}.mp4', mode='w')
+        fps = 24
+        self.stream_video = self.container.add_stream('h264', rate=fps)
+        self.stream_video.width = frame_video.width
+        self.stream_video.height = frame_video.height
+        #self.stream_video.pix_fmt = 'yuv420p'
+        self.stream_video.pix_fmt = frame_video.format.name
+
+    def end(self):
+        # Flush stream
+        for packet in self.stream_video.encode():
+            self.container.mux(packet)
+
+        # Close the file
+        self.container.close()
+
 
 async def main(event_loop):
     #主循环不退出
@@ -194,16 +227,16 @@ if __name__ == '__main__':
     #C之后增加D
     video_subject.subscribe(lambda args: saver.on_frame(args))
 
-
     async def client_mock():
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
         print('客户操作')
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         print('模拟玩家开始直播')
         event_need_record._loop.call_soon_threadsafe(event_need_record.set)
-        await asyncio.sleep(5)
+        await asyncio.sleep(20)
         print('模拟玩家停止直播')
         event_need_record._loop.call_soon_threadsafe(event_need_record.clear)
+
 
     event_loop = asyncio.get_event_loop()
     #event_loop = asyncio.new_event_loop()
