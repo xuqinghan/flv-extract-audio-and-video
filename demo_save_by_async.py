@@ -1,12 +1,23 @@
 '''
+
+20210128
+
+如果在界面中保存，同样有这个问题，但是不影响，可以正常保存
+specified frame type (3) at 0 is not compatible with keyframe interval
+
+
 按frame打开数据源 解码为frame
 按frame保存 + 异步
+
 
 根据异步event判断 做什么： 
 
 收到event
 1开始录制。 初始化视频大小？数据源提前初始化好音视频初始header？
 2 结束录制
+
+
+
 
 发出
 1 视频header， 音频header
@@ -29,6 +40,9 @@ import time
 import rx
 from rx import of, operators as ops
 from rx.subject import Subject
+
+from u_save_video import Recorder
+
 
 # def get_data_bytes_aac(frame):
 #     '''转int16'''
@@ -54,29 +68,6 @@ from rx.subject import Subject
 # sampleRate = 44100
 # elaspe_aac_package = sampleNumber/sampleRate
 
-class RecordVideo(object):
-    """docstring for  RecordVideo"""
-    def __init__(self):
-        super(RecordVideo, self).__init__()
-        self.container = av.open('test111.mp4', mode='w')
-        self.stream_video = self.container.add_stream('h264', rate=24)
-        self.stream_video.width = 384
-        self.stream_video.height = 288
-        self.stream_video.pix_fmt = 'yuv420p'
-        self.stream_audio = self.container.add_stream('aac', rate=44100)
-
-    def save_frame1_audio(self, frame):
-        frame.pts = None
-        for packet in self.stream_audio.encode(frame):
-            self.container.mux(packet)
-
-    def save_frame1_video(self, frame):
-        for packet in self.stream_video.encode(frame):
-            self.container.mux(packet)
-
-    def end(self):
-        # Close the file
-        self.container.close()
 
 
 async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_need_record, sender):
@@ -99,9 +90,9 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
 
     elapse = 0.01
     #container_out = None
-    record1_video = None
+    recorder = Recorder(event_need_record)
     #ts_decoder_start = time.monotonic()
-    pts_save_t0 = 0
+    #pts_save_t0 = 0
 
 
     for frame in container.decode(video=0, audio=0):
@@ -110,53 +101,54 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
         if event_live_end.is_set():
             #停止直播，退出
             break
+        print('直播中')
 
-        kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
-        if kind == 'h264':
-            #img = frame.to_image()
-            print('发送走', frame)
-            #sender(kind, frame)
+        recorder.on_frame(frame)
+        # if kind == 'h264':
+        #     #img = frame.to_image()
+        #     print('发送走', frame)
+        #     #sender(kind, frame)
 
-        if event_need_record.is_set():
-            #录制
-            if record1_video is None:
-                record1_video = RecordVideo()
-                # container_out = av.open('test111.mp4', mode='w')
-                # stream_video = container_out.add_stream('h264', rate=24)
-                # #stream_video.time_base = Fraction(1, 48000)
-                # stream_video.time_base = stream_video_in.time_base
-                # stream_video.width = 384
-                # stream_video.height = 288
-                # stream_video.pix_fmt = 'yuv420p'
-                # stream_audio = container_out.add_stream('aac', rate=44100)
-                pts_save_t0 = frame.pts
+        # if event_need_record.is_set():
+        #     #录制
+        #     if record1_video is None:
+        #         record1_video = RecordVideo(frame.pts, frame.width, frame.height)
+        #         # container_out = av.open('test111.mp4', mode='w')
+        #         # stream_video = container_out.add_stream('h264', rate=24)
+        #         # #stream_video.time_base = Fraction(1, 48000)
+        #         # stream_video.time_base = stream_video_in.time_base
+        #         # stream_video.width = 384
+        #         # stream_video.height = 288
+        #         # stream_video.pix_fmt = 'yuv420p'
+        #         # stream_audio = container_out.add_stream('aac', rate=44100)
+                
 
-            print('偏移前', frame.pts, frame.dts, frame.pts)
-            frame.pts = frame.pts - pts_save_t0
-            print('偏移后', frame.pts, frame.dts, frame.pts)
-            #print('stream time_base', stream_video.time_base)
-            #print()
-            if kind == 'h264':
-                # packets = stream_video.encode(frame)
-                # print(packets)
-                # for packet in packets:
-                #     container_out.mux(packet)
-                record1_video.save_frame1_video(frame)
-            elif kind == 'aac':
-                # #清空pts
-                # frame.pts = None
-                # for packet in stream_audio.encode(frame):
-                #     container_out.mux(packet)
-                record1_video.save_frame1_audio(frame)
-        else:
-            #停止
-            if record1_video is not None:
-                print('停止直播')
-                record1_video.end()
-                record1_video = None
-                # Close the file
-                #container_out.close()
-                #container_out = None
+        #     # print('偏移前', frame.pts, frame.dts, frame.pts)
+
+        #     # print('偏移后', frame.pts, frame.dts, frame.pts)
+        #     #print('stream time_base', stream_video.time_base)
+        #     #print()
+        #     if kind == 'h264':
+        #         # packets = stream_video.encode(frame)
+        #         # print(packets)
+        #         # for packet in packets:
+        #         #     container_out.mux(packet)
+        #         record1_video.save_frame1_video(frame)
+        #     elif kind == 'aac':
+        #         # #清空pts
+        #         # frame.pts = None
+        #         # for packet in stream_audio.encode(frame):
+        #         #     container_out.mux(packet)
+        #         record1_video.save_frame1_audio(frame)
+        # else:
+        #     #停止
+        #     if record1_video is not None:
+        #         print('停止直播')
+        #         record1_video.end()
+        #         record1_video = None
+        #         # Close the file
+        #         #container_out.close()
+        #         #container_out = None
 
         # if i > 100:
         #     break
