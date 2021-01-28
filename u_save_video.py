@@ -1,4 +1,5 @@
 import av
+from datetime import datetime
 
 class RecordVideo(object):
     """一段录像"""
@@ -29,7 +30,8 @@ class RecordVideo(object):
 
 class Recorder(object):
     '''录像机 on_frame作为 rx的订阅者'''
-    def __init__(self, event_need_record):
+    def __init__(self, id_vehicle, event_need_record):
+        self.id_vehicle = id_vehicle
         self.event_need_record = event_need_record
         self.record1_video = None #当前录像段
 
@@ -45,7 +47,10 @@ class Recorder(object):
                 #没开始 需要视频帧进行初始化
                 if kind == 'h264':
                     print('录像机开始1个新录像')
-                    self.record1_video = RecordVideo('111', frame.pts, frame.width, frame.height)
+                    #f'{datetime.now().isoformat()}'
+                    dt_str = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+                    fname = f'{self.id_vehicle}_{dt_str}'
+                    self.record1_video = RecordVideo(fname, frame.pts, frame.width, frame.height)
                 else:
                     #不是视频帧。没初始化好，不继续
                     return

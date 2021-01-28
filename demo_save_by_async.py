@@ -26,7 +26,7 @@ specified frame type (3) at 0 is not compatible with keyframe interval
 
 '''
 import av
-from av.video.frame import VideoFrame
+#from av.video.frame import VideoFrame
 
 import numpy as np
 #import cv2
@@ -35,7 +35,6 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 import time
-#import u_image
 
 import rx
 from rx import of, operators as ops
@@ -90,7 +89,7 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
 
     elapse = 0.01
     #container_out = None
-    recorder = Recorder(event_need_record)
+    #recorder = Recorder(id_vehicle, event_need_record)
     #ts_decoder_start = time.monotonic()
     #pts_save_t0 = 0
 
@@ -102,12 +101,13 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
             #停止直播，退出
             break
         print('直播中')
-
-        recorder.on_frame(frame)
+        #print('发送走', frame)
+        sender(frame)
+        #只能在这里录制，rx订阅报错
+        #recorder.on_frame(frame)
         # if kind == 'h264':
         #     #img = frame.to_image()
-        #     print('发送走', frame)
-        #     #sender(kind, frame)
+
 
         # if event_need_record.is_set():
         #     #录制
@@ -212,98 +212,6 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
 
 
 
-class SaverMock:
-    def __init__(self, event_need_record):
-        self.event_need_record = event_need_record
-        self.is_recording = False
-        self.container = None
-        self.stream_video = None
-        self.stream_audio = None
-        
-
-    def on_frame(self, args):
-        #print(self, args)
-        if self.event_need_record.is_set():
-            #玩家通知开始录像
-            event, frame = args
-            if self.is_recording:
-                #开始录像
-                print('模拟收到，保存', event, frame)
-
-                if event == 'h264':
-                    # print(frame.pict_type)
-                    # print(frame.key_frame)
-                    # print(frame.interlaced_frame)
-                    # for packet in self.stream_video.encode(frame):
-                    #     try:
-                    #         self.container.mux(packet)
-                    #img = frame.to_image()
-                    #print(img)
-                    #frame = VideoFrame.from_image(img)
-                    # try:
-                    #     packets = self.stream_video.encode(frame)
-                    # except av.error.ProtocolNotFoundError:
-                    #     print('ProtocolNotFoundError in on_frame')
-                    #packets = []
-                    print('收到图像',frame)
-                    #frame = VideoFrame.from_image(data)
-                    print('frame',frame)
-
-                    try:
-                        packets = self.stream_video.encode(frame)
-                    except av.error.ProtocolNotFoundError:
-                        print('ProtocolNotFoundError in on_frame')
-                        packets = []
-
-                    print('packets', packets)
-                    for packet in packets:
-                        #specified frame type (3) at 0 is not compatible with keyframe interval
-                        self.container.mux(packet)
-                # elif event == 'aac':
-                #     pass
-            else:
-                #没开始录像
-                if event == 'h264':
-                    self.start(frame)
-        else:
-            #玩家通知停止录像
-            if self.is_recording:
-                #正在录像
-                self.is_recording = False
-                print('停止录像')
-                self.end()
-            else:
-                #本来停止中，玩家通知停止，无动作
-                pass
-
-    def start(self, frame):
-        print('开始录像')
-        self.is_recording = True
-        #print(frame_video.width, frame_video.height, frame_video.format.name)
-        self.container = av.open(f'{datetime.now().isoformat()}.mp4', mode='w')
-        fps = 24
-        self.stream_video = self.container.add_stream('h264', rate=fps)
-        # self.stream_video.width = frame_video.width
-        # self.stream_video.height = frame_video.height
-        # #self.stream_video.pix_fmt = 'yuv420p'
-        # self.stream_video.pix_fmt = frame_video.format.name
-        self.stream_video.width = 384
-        self.stream_video.height = 288
-        self.stream_video.pix_fmt = 'yuv420p'
-
-
-    def end(self):
-        # Flush stream
-        try:
-            for packet in self.stream_video.encode():
-                self.container.mux(packet)
-        except av.error.ProtocolNotFoundError:
-            print('ProtocolNotFoundError in end')
-        # Close the file
-        self.container.close()
-        self.container = None
-
-
 
     # while True:
     #     await asyncio.sleep(1)
@@ -321,14 +229,14 @@ if __name__ == '__main__':
 
     video_subject = Subject()
 
-    def sender_mock(event, data):
+    def sender_mock(data):
         #print('模拟发送走', event, data)
-        video_subject.on_next((event, data))
+        video_subject.on_next(data)
 
-    saver = SaverMock(event_need_record)
 
-    #C之后增加D
-    video_subject.subscribe(lambda args: saver.on_frame(args))
+    #订阅保存
+    recorder = Recorder(id_vehicle, event_need_record)
+    video_subject.subscribe(lambda frame: recorder.on_frame(frame))
 
     async def client_mock():
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
