@@ -13,12 +13,22 @@ class RecordVideo(object):
         self.pts_save_t0 = pts_save_t0
 
     def save_frame1_audio(self, frame):
+        # if self.pts_save_t0 is not None:
+        #     frame.pts = frame.pts - self.pts_save_t0
+        #和视频不同 设置为NOne不影响播放
         frame.pts = None
+        print(f'实际保存 音频帧 {frame} time = {frame.time} pts={frame.pts} time_base={frame.time_base}')
+
+
         for packet in self.stream_audio.encode(frame):
             self.container.mux(packet)
 
     def save_frame1_video(self, frame):
-        frame.pts = frame.pts - self.pts_save_t0
+        if self.pts_save_t0 is not None:
+            frame.pts = frame.pts - self.pts_save_t0
+
+        print(f'实际保存 视频帧 {frame} time = {frame.time} pts={frame.pts} time_base={frame.time_base}')
+
         for packet in self.stream_video.encode(frame):
             self.container.mux(packet)
 

@@ -2,6 +2,11 @@
 
 20210128
 
+数据源直接用pyav的frame。
+
+验证pyav保存+rx+asynic
+
+
 如果在界面中保存，同样有这个问题，但是不影响，可以正常保存
 specified frame type (3) at 0 is not compatible with keyframe interval
 
@@ -16,9 +21,23 @@ specified frame type (3) at 0 is not compatible with keyframe interval
 1开始录制。 初始化视频大小？数据源提前初始化好音视频初始header？
 2 结束录制
 
-
-
-
+pts 20秒附近
+录像机开始1个新录像
+保存图像 <av.VideoFrame #259, pts=17290 yuv420p 384x288 at 0x253c2b06280>
+实际保存 视频帧 <av.VideoFrame #259, pts=0 yuv420p 384x288 at 0x253c2b06280> time = 0.0 pts=0 time_base=1/1000
+直播中
+解码结果 aac <av.AudioFrame 745, pts=17298, 1024 samples at 44100Hz, stereo, fltp at 0x253c2ad4ba0>
+保存音频 <av.AudioFrame 745, pts=17298, 1024 samples at 44100Hz, stereo, fltp at 0x253c2ad4ba0>
+直播中
+解码结果 aac <av.AudioFrame 746, pts=17321, 1024 samples at 44100Hz, stereo, fltp at 0x253c2ad4dd0>
+保存音频 <av.AudioFrame 746, pts=17321, 1024 samples at 44100Hz, stereo, fltp at 0x253c2ad4dd0>
+直播中
+解码结果 aac <av.AudioFrame 747, pts=17344, 1024 samples at 44100Hz, stereo, fltp at 0x253c2fb5430>
+保存音频 <av.AudioFrame 747, pts=17344, 1024 samples at 44100Hz, stereo, fltp at 0x253c2fb5430>
+直播中
+解码结果 h264 <av.VideoFrame #260, pts=17356 yuv420p 384x288 at 0x253c2b06100>
+保存图像 <av.VideoFrame #260, pts=17356 yuv420p 384x288 at 0x253c2b06100>
+实际保存 视频帧 <av.VideoFrame #260, pts=66 yuv420p 384x288 at 0x253c2b06100> time = 0.066 pts=66 time_base=1/1000
 发出
 1 视频header， 音频header
 2 视频帧
@@ -102,111 +121,11 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
             break
         print('直播中')
         kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
-        #print('发送走', frame)
+        print('解码结果', kind, frame)
         sender(kind, frame)
-        #只能在这里录制，rx订阅报错
-        #recorder.on_frame(frame)
-        # if kind == 'h264':
-        #     #img = frame.to_image()
-
-
-        # if event_need_record.is_set():
-        #     #录制
-        #     if record1_video is None:
-        #         record1_video = RecordVideo(frame.pts, frame.width, frame.height)
-        #         # container_out = av.open('test111.mp4', mode='w')
-        #         # stream_video = container_out.add_stream('h264', rate=24)
-        #         # #stream_video.time_base = Fraction(1, 48000)
-        #         # stream_video.time_base = stream_video_in.time_base
-        #         # stream_video.width = 384
-        #         # stream_video.height = 288
-        #         # stream_video.pix_fmt = 'yuv420p'
-        #         # stream_audio = container_out.add_stream('aac', rate=44100)
-                
-
-        #     # print('偏移前', frame.pts, frame.dts, frame.pts)
-
-        #     # print('偏移后', frame.pts, frame.dts, frame.pts)
-        #     #print('stream time_base', stream_video.time_base)
-        #     #print()
-        #     if kind == 'h264':
-        #         # packets = stream_video.encode(frame)
-        #         # print(packets)
-        #         # for packet in packets:
-        #         #     container_out.mux(packet)
-        #         record1_video.save_frame1_video(frame)
-        #     elif kind == 'aac':
-        #         # #清空pts
-        #         # frame.pts = None
-        #         # for packet in stream_audio.encode(frame):
-        #         #     container_out.mux(packet)
-        #         record1_video.save_frame1_audio(frame)
-        # else:
-        #     #停止
-        #     if record1_video is not None:
-        #         print('停止直播')
-        #         record1_video.end()
-        #         record1_video = None
-        #         # Close the file
-        #         #container_out.close()
-        #         #container_out = None
-
-        # if i > 100:
-        #     break
-        #print('pts', frame.pts)
-        # elapse_src_sec = (frame.pts - pts)/1e3
-        # #更新pts
-        # pts = frame.pts
-        
-
-
-
-        # #秒数
-        # ts = ts_0 + pts/1e3
-        # #直接以延时后的时间为时间戳
-        # #转bytes 用于发送
-        # if kind == 'h264':
-        #     data_bytes = get_data_bytes_h264(frame)
-        # elif kind == 'aac':
-        #     data_bytes = get_data_bytes_aac(frame)
-        # else:
-        #     continue 
-            # #声音的话需要知道sapmples 根据这个决定延时
-            # array = frame.to_ndarray()
-            # #data_bytes  = array.tobytes()
-            # data_bytes = array.tolist()
-            # n_sample = array.shape[1]
-            # elaspe_need = n_sample/sampleRate
-            # elapse_src_sec = elaspe_need
-
-        #data_bytes = frame2databytes[kind](frame)
-        # event = 'acc_vehicle_inside_captured' if kind == 'aac' else 'img_vehicle_inside_captured'
-        # #ts = datetime.now().timestamp()
-        # await sender(event, (id_vehicle, ts, data_bytes))
-
-        # #await asyncio.sleep(elapse_src_sec)
-
-        # #gateway事件类型
-
-
-        # ts_decode_end = time.monotonic()
-        # elapse_real_sec = (ts_decode_end - ts_decoder_start)
-        # ts_decoder_start = ts_decode_end
-        # #发送走
-        # #模拟延时
-        # #elapse_src_sec = elaspe_aac_package
-        # if (elapse_real_sec < elapse_src_sec):
-        #     elapse = elapse_src_sec - elapse_real_sec
-        # else:
-        #     elapse = 0
-
-        #elapse = elapse_src_sec
-        #elapse = elaspe_aac_package
-        #print(f' {kind} pts={pts}, 编码延时{elapse_src_sec}秒, 解码延时{elapse_real_sec}秒 发送延时{elapse}')
 
         await asyncio.sleep(elapse)
-        #print(kind)
-        #i += 1
+
 
 
 
