@@ -242,12 +242,14 @@ if __name__ == '__main__':
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
         print('客户操作')
         await asyncio.sleep(20)
-        print('模拟玩家开始直播')
+        print('模拟玩家开始录像')
         event_need_record._loop.call_soon_threadsafe(event_need_record.set)
         await asyncio.sleep(30)
-        print('模拟玩家停止直播')
+        print('模拟玩家停止图像')
         event_need_record._loop.call_soon_threadsafe(event_need_record.clear)
-
+        await asyncio.sleep(10)
+        print('模拟玩家停止直播')
+        event_need_record._loop.call_soon_threadsafe(event_live_end.set)
 
     async def main(event_loop):
         #主循环不退出
