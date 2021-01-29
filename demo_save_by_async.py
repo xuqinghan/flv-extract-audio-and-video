@@ -101,8 +101,9 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
             #停止直播，退出
             break
         print('直播中')
+        kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
         #print('发送走', frame)
-        sender(frame)
+        sender(kind, frame)
         #只能在这里录制，rx订阅报错
         #recorder.on_frame(frame)
         # if kind == 'h264':
@@ -229,14 +230,14 @@ if __name__ == '__main__':
 
     video_subject = Subject()
 
-    def sender_mock(data):
+    def sender(kind, data):
         #print('模拟发送走', event, data)
-        video_subject.on_next(data)
+        video_subject.on_next((kind, data))
 
 
     #订阅保存
     recorder = Recorder(id_vehicle, event_need_record)
-    video_subject.subscribe(lambda frame: recorder.on_frame(frame))
+    video_subject.subscribe(lambda args: recorder.on_frame(*args))
 
     async def client_mock():
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
@@ -253,7 +254,7 @@ if __name__ == '__main__':
 
     async def main(event_loop):
         #主循环不退出
-        co1 = mock_live_flv_round1(str(path_to_video), id_vehicle, event_live_end, event_need_record, sender_mock)
+        co1 = mock_live_flv_round1(str(path_to_video), id_vehicle, event_live_end, event_need_record, sender)
         #event_loop.create_task()
         #创建event_loop
         co2 = client_mock()

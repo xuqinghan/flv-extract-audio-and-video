@@ -36,12 +36,12 @@ class Recorder(object):
         self.record1_video = None #当前录像段
 
 
-    def on_frame(self, frame):
+    def on_frame(self, kind, frame):
         '''收到1帧，但是可以不处理，只在event_need_record时才处理'''
         if self.event_need_record.is_set():
             #玩家通知开始录像
             #kind, frame = args
-            kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
+            #kind = 'aac' if isinstance(frame, av.AudioFrame) else 'h264'
 
             if self.record1_video is None:
                 #没开始 需要视频帧进行初始化
