@@ -29,7 +29,7 @@ import av
 #from av.video.frame import VideoFrame
 
 import numpy as np
-#import cv2
+import cv2
 from datetime import datetime
 
 from pathlib import Path
@@ -210,7 +210,14 @@ async def mock_live_flv_round1(path_to_video, id_vehicle, event_live_end, event_
 
 
 
+def show_frame264(frame):
 
+    img = frame.to_image()
+    #opencv格式
+    img = cv2.cvtColor(np.asarray(img),cv2.COLOR_RGB2BGR)
+    #print(img)
+    cv2.imshow("h264", img)
+    k = cv2.waitKey(1)
 
 
 
@@ -235,9 +242,18 @@ if __name__ == '__main__':
         video_subject.on_next((kind, data))
 
 
-    #订阅保存
+    #订阅
+    # ----------保存----------
     recorder = Recorder(id_vehicle, event_need_record)
     video_subject.subscribe(lambda args: recorder.on_frame(*args))
+
+    #----------播放-----------
+    video_subject.pipe(
+        #处理：过滤出图像
+        ops.filter(lambda args: args[0] == 'h264')
+        #过滤出frame部分
+        ,ops.map(lambda args: args[1])
+    ).subscribe(show_frame264)
 
     async def client_mock():
         '''模拟客户操作，直播开始30秒后开始录像 30秒后停止录像'''
