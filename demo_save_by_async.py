@@ -242,9 +242,16 @@ if __name__ == '__main__':
         video_subject.on_next((kind, data))
 
 
+    #-----保存录像----------
+    def fname_record1():
+        #f'{datetime.now().isoformat()}'
+        dt_str = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        return f'{id_vehicle}_{dt_str}'
+
+
     #订阅
     # ----------保存----------
-    recorder = Recorder(id_vehicle, event_need_record)
+    recorder = Recorder(fname_record1, event_need_record)
     video_subject.subscribe(lambda args: recorder.on_frame(*args))
 
     #----------播放-----------
